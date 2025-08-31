@@ -272,16 +272,29 @@ const CookHomeScreen = ({ navigation }) => {
 
     try {
       const cookId = user.roleDetails?.cook_id;
+      
+      // Debug logging
+      console.log('🔍 Creating meal with user data:', {
+        userId: user.id,
+        userRole: user.role,
+        roleDetails: user.roleDetails,
+        cookId: cookId
+      });
+      
+      const mealData = {
+        cook_id: cookId,
+        name: mealForm.name.trim(),
+        description: mealForm.description.trim(),
+        price: parseFloat(mealForm.price),
+        picture_urls: mealForm.picture_urls,
+        is_weekly_special: mealForm.is_weekly_special,
+      };
+      
+      console.log('🍽️ Inserting meal data:', mealData);
+      
       const { data, error } = await supabase
         .from('meals')
-        .insert({
-          cook_id: cookId,
-          name: mealForm.name.trim(),
-          description: mealForm.description.trim(),
-          price: parseFloat(mealForm.price),
-          picture_urls: mealForm.picture_urls,
-          is_weekly_special: mealForm.is_weekly_special,
-        })
+        .insert(mealData)
         .select()
         .single();
 
@@ -296,6 +309,15 @@ const CookHomeScreen = ({ navigation }) => {
     }
   };
 
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
+      Alert.alert('Error', 'Failed to sign out');
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -307,101 +329,126 @@ const CookHomeScreen = ({ navigation }) => {
   }
 
   // Render the component
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Cook Dashboard</Text>
-          <Text style={styles.subtitle}>Welcome back, {user?.email}</Text>
-        </View>
-
-        {/* Stats Cards */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.totalOrders}</Text>
-            <Text style={styles.statLabel}>Total Orders</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.pendingOrders}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.preparingOrders}</Text>
-            <Text style={styles.statLabel}>Preparing</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.readyOrders}</Text>
-            <Text style={styles.statLabel}>Ready</Text>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionButton} onPress={openCreateMealModal}>
-            <Text style={styles.actionButtonText}>Create New Meal</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Recent Orders */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Orders</Text>
-          {orders.length > 0 ? (
-            orders.slice(0, 5).map((order) => (
-              <View key={order.order_id} style={styles.orderCard}>
-                <Text style={styles.orderText}>Order #{order.order_id}</Text>
-                <Text style={styles.orderText}>Status: {order.status}</Text>
-                <Text style={styles.orderText}>Date: {new Date(order.created_at).toLocaleDateString()}</Text>
+      {/* Wrapper with flex:1 ensures ScrollView knows its height */}
+      <View style={styles.scrollWrapper}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          showsVerticalScrollIndicator
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerTop}>
+              <View style={styles.headerInfo}>
+                <Text style={styles.title}>Cook Dashboard</Text>
+                <Text style={styles.subtitle}>Welcome back, {user?.email}</Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.noDataText}>No orders yet</Text>
-          )}
-        </View>
+              <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+                <Text style={styles.signOutButtonText}>🚪 Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        {/* Meals */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Meals</Text>
-          {meals.length > 0 ? (
-            meals.map((meal) => (
-              <View key={meal.meal_id} style={styles.mealCard}>
-                <Text style={styles.mealName}>{meal.name}</Text>
-                <Text style={styles.mealPrice}>${meal.price}</Text>
-                <Text style={styles.mealDescription}>{meal.description}</Text>
-                
-                {/* Display meal images */}
-                {meal.picture_urls && meal.picture_urls.length > 0 && (
-                  <View style={styles.mealImagesContainer}>
-                    <Text style={styles.mealImagesTitle}>Images:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mealImagesScroll}>
-                      {meal.picture_urls.map((imageUrl, index) => (
-                        <Image key={index} source={{ uri: imageUrl }} style={styles.mealImage} />
-                      ))}
-                    </ScrollView>
+          {/* Stats Cards */}
+          <View style={styles.statsContainer}>
+            <Text style={styles.sectionTitle}>📊 Your Statistics</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>{stats.totalOrders}</Text>
+                <Text style={styles.statLabel}>Total Orders</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>{stats.pendingOrders}</Text>
+                <Text style={styles.statLabel}>Pending</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>{stats.preparingOrders}</Text>
+                <Text style={styles.statLabel}>Preparing</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>{stats.readyOrders}</Text>
+                <Text style={styles.statLabel}>Ready</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Quick Actions */}
+          <View style={styles.actionsContainer}>
+            <Text style={styles.sectionTitle}>🚀 Quick Actions</Text>
+            <TouchableOpacity style={styles.actionButton} onPress={openCreateMealModal}>
+              <Text style={styles.actionButtonText}>Create New Meal</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Recent Orders */}
+          <View style={styles.recentOrdersContainer}>
+            <Text style={styles.sectionTitle}>📋 Recent Orders</Text>
+            {orders.length > 0 ? (
+              orders.slice(0, 5).map((order) => (
+                <View key={order.order_id} style={styles.orderCard}>
+                  <View style={styles.orderHeader}>
+                    <Text style={styles.orderId}>Order #{order.order_id}</Text>
+                    <Text style={styles.orderStatus}>{order.status}</Text>
                   </View>
-                )}
+                  <Text style={styles.orderDetails}>
+                    {order.employees?.name} ordered {order.meals?.name} from{' '}
+                    {order.companies?.name}
+                  </Text>
+                  <Text style={styles.orderDate}>
+                    Date: {new Date(order.order_date).toLocaleDateString()}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No orders yet</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Orders will appear here when they're created
+                </Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.noDataText}>No meals created yet</Text>
-          )}
-        </View>
-      </ScrollView>
+            )}
+          </View>
+
+          {/* Meals */}
+          <View style={styles.mealsContainer}>
+            <Text style={styles.sectionTitle}>🍽️ Your Meals</Text>
+            {meals.length > 0 ? (
+              meals.map((meal) => (
+                <View key={meal.meal_id} style={styles.mealCard}>
+                  <Text style={styles.mealName}>{meal.name}</Text>
+                  <Text style={styles.mealPrice}>${meal.price}</Text>
+                  <Text style={styles.mealDescription}>{meal.description}</Text>
+                  
+                  {/* Display meal images */}
+                  {meal.picture_urls && meal.picture_urls.length > 0 && (
+                    <View style={styles.mealImagesContainer}>
+                      <Text style={styles.mealImagesTitle}>Images:</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mealImagesScroll}>
+                        {meal.picture_urls.map((imageUrl, index) => (
+                          <Image key={index} source={{ uri: imageUrl }} style={styles.mealImage} />
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No meals created yet</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Create your first meal to get started
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
+      </View>
 
       {/* Create Meal Modal */}
       <Modal
@@ -488,11 +535,15 @@ export default CookHomeScreen;
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8f9fa',
+    height: Platform.OS === 'web' ? '100vh' : '100%', // full height on web
+    flex: Platform.OS === 'web' ? undefined : 1,
   },
-  scrollView: {
+  scrollWrapper: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 20, // Add some padding at the bottom for the modal
   },
   loadingContainer: {
     flex: 1,
@@ -504,33 +555,73 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#6f42c1', // Purple header like AdminDashboard
+    padding: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
+    marginBottom: 8,
+    borderRadius: 10,
+    margin: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  headerInfo: {
+    flex: 1, // Allow headerInfo to take available space
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
+    color: '#fff',
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  signOutButton: {
+    backgroundColor: 'transparent',
+    padding: 10,
+    borderRadius: 8,
+  },
+  signOutButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   statsContainer: {
-    flexDirection: 'row',
     padding: 20,
+    backgroundColor: '#fff',
+    marginBottom: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statsGrid: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10, // Add gap between stat cards
   },
   statCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#f8f9fa',
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
     flex: 1,
-    marginHorizontal: 5,
+    minWidth: 80, // Ensure minimum width
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -550,6 +641,14 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     padding: 20,
+    backgroundColor: '#fff',
+    marginBottom: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   actionButton: {
     backgroundColor: '#007AFF',
@@ -562,10 +661,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  section: {
+  recentOrdersContainer: {
     padding: 20,
     backgroundColor: '#fff',
     marginBottom: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mealsContainer: {
+    padding: 20,
+    backgroundColor: '#fff',
+    marginBottom: 10,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sectionTitle: {
     fontSize: 18,
@@ -581,10 +697,44 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#007AFF',
   },
-  orderText: {
-    fontSize: 14,
-    color: '#333',
+  orderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 5,
+  },
+  orderId: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  orderStatus: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  orderDetails: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  orderDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#666',
+    fontStyle: 'italic',
+    marginBottom: 5,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999',
   },
   mealCard: {
     backgroundColor: '#f8f9fa',
@@ -607,11 +757,6 @@ const styles = StyleSheet.create({
   mealDescription: {
     fontSize: 14,
     color: '#666',
-  },
-  noDataText: {
-    textAlign: 'center',
-    color: '#666',
-    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
@@ -758,5 +903,8 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 5,
     marginRight: 10,
+  },
+  bottomSpacing: {
+    height: 100, // Add some space at the bottom for the modal
   },
 });
