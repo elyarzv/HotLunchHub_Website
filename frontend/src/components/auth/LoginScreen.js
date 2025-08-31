@@ -12,6 +12,16 @@ import {
 } from 'react-native';
 import { supabase } from '../../services/supabase';
 
+/**
+ * Generic LoginScreen component that handles authentication for all user roles
+ * 
+ * Role Validation:
+ * 1. Authenticates user with Supabase Auth
+ * 2. Validates user has correct role in profiles table
+ * 3. Validates user exists in role-specific table (admins, drivers, cooks, employees)
+ * 4. Shows appropriate error messages for role mismatches
+ * 5. Signs out unauthorized users automatically
+ */
 const LoginScreen = ({ role, navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -85,6 +95,7 @@ const LoginScreen = ({ role, navigation }) => {
       console.log('✅ Auth successful for user:', data.user.id);
 
       // 2. Check if user has the correct role profile
+      console.log(`🔍 Checking if user has ${role} role for user ID:`, data.user.id);
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -92,21 +103,42 @@ const LoginScreen = ({ role, navigation }) => {
         .eq('role', role)
         .single();
 
+      console.log('🔍 Profile check result:', { profile, profileError });
+
       if (profileError || !profile) {
         console.error(`❌ ${role} profile not found:`, profileError);
+        
+        // Clear the form first
+        setEmail('');
+        setPassword('');
+        
+        // Show simple error message first
+        console.log('🔴 Showing access denied alert...');
+        
+        // Force the alert to show immediately
         Alert.alert(
           'Access Denied', 
-          `This account does not have ${role} privileges. Please use the correct login page.`
+          `This account is not in the ${role} list.`,
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                console.log('User dismissed access denied alert');
+                // Sign out after user dismisses alert
+                await supabase.auth.signOut();
+              }
+            }
+          ],
+          { cancelable: false }
         );
         
-        // Sign out the user since they don't have the right role
-        await supabase.auth.signOut();
+        console.log('🔴 Alert should be visible now');
         return;
       }
 
       console.log(`✅ ${role} profile found:`, profile);
 
-      // 3. Get role-specific details
+      // 3. Get role-specific details and validate role table entry
       let roleDetails = null;
       try {
         let roleTable = '';
@@ -132,25 +164,59 @@ const LoginScreen = ({ role, navigation }) => {
         }
 
         if (roleTable && idField) {
-          const { data: roleData } = await supabase
+          const { data: roleData, error: roleTableError } = await supabase
             .from(roleTable)
             .select('*')
             .eq(idField, data.user.id)
             .single();
           
+          if (roleTableError || !roleData) {
+            console.error(`❌ ${role} not found in ${roleTable} table:`, roleTableError);
+            Alert.alert(
+              'Access Denied', 
+              `${role.charAt(0).toUpperCase() + role.slice(1)} profile not found. Please contact system administrator.`,
+              [
+                {
+                  text: 'OK',
+                  onPress: async () => {
+                    await supabase.auth.signOut();
+                  }
+                }
+              ],
+              { cancelable: false }
+            );
+            return;
+          }
+          
           roleDetails = roleData;
         }
       } catch (roleError) {
-        console.log(`⚠️ ${role} details not found, but profile exists`);
-        // Continue with basic role info
+        console.error(`❌ Error checking ${role} details:`, roleError);
+        Alert.alert(
+          'Access Denied', 
+          `Error validating ${role} access. Please contact system administrator.`,
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await supabase.auth.signOut();
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+        return;
       }
 
       console.log(`🎉 ${role} login successful!`);
+      
+      // The AuthContext will automatically load the profile and trigger navigation
+      // No need to manually call loadUserProfile here
+      
       Alert.alert('Success', `Welcome, ${role.charAt(0).toUpperCase() + role.slice(1)}!`, [
         {
           text: 'OK',
           onPress: () => {
-            // The AuthContext will handle navigation based on user role
             console.log(`Redirecting to ${config.redirectScreen}`);
           }
         }
@@ -168,8 +234,14 @@ const LoginScreen = ({ role, navigation }) => {
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Text style={styles.title}>{config.title}</Text>
           <Text style={styles.subtitle}>{config.subtitle}</Text>
@@ -244,12 +316,14 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
     padding: 20,
+    paddingTop: 40,
+    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
     marginBottom: 40,
+    marginTop: 20,
   },
   title: {
     fontSize: 32,
@@ -275,6 +349,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     marginBottom: 30,
+    minHeight: 300,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -336,6 +411,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
+    marginTop: 20,
+    paddingBottom: 20,
   },
   footerText: {
     color: '#a8a8a8',

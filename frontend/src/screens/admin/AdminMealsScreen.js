@@ -1,7 +1,3 @@
-// Admin Meals Screen
-// Comprehensive meal management for administrators
-// Allows adding, editing, and managing available meals
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,135 +6,153 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Modal,
-  TextInput,
   SafeAreaView,
+  TextInput,
+  Modal,
+  Platform,
 } from 'react-native';
 import { supabase } from '../../services/supabase';
-import CustomButton from '../../components/common/CustomButton';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 const AdminMealsScreen = ({ navigation }) => {
   const [meals, setMeals] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [showAddMealModal, setShowAddMealModal] = useState(false);
-  const [editingMeal, setEditingMeal] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const [newMeal, setNewMeal] = useState({
+  const [cooks, setCooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedMeal, setSelectedMeal] = useState(null);
+  const [formData, setFormData] = useState({
     name: '',
     description: '',
     price: '',
+    cook_id: '',
     is_weekly_special: false,
   });
 
   useEffect(() => {
     loadMeals();
+    loadCooks();
   }, []);
 
   const loadMeals = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('meals')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select(`
+          *,
+          cooks!inner(name)
+        `)
+        .order('name');
 
       if (error) throw error;
       setMeals(data || []);
     } catch (error) {
       console.error('Error loading meals:', error);
-      Alert.alert('Error', 'Failed to load meals: ' + error.message);
+      Alert.alert('Error', 'Failed to load meals');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddMeal = async () => {
-    if (!newMeal.name || !newMeal.price) {
-      Alert.alert('Validation Error', 'Please fill in meal name and price');
+  const loadCooks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cooks')
+        .select('cook_id, name')
+        .order('name');
+
+      if (error) throw error;
+      setCooks(data || []);
+    } catch (error) {
+      console.error('Error loading cooks:', error);
+    }
+  };
+
+  const openAddModal = () => {
+    setIsEditing(false);
+    setSelectedMeal(null);
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      cook_id: '',
+      is_weekly_special: false,
+    });
+    setModalVisible(true);
+  };
+
+  const openEditModal = (meal) => {
+    setIsEditing(true);
+    setSelectedMeal(meal);
+    setFormData({
+      name: meal.name || '',
+      description: meal.description || '',
+      price: meal.price ? meal.price.toString() : '',
+      cook_id: meal.cook_id || '',
+      is_weekly_special: meal.is_weekly_special || false,
+    });
+    setModalVisible(true);
+  };
+
+  const handleSave = async () => {
+    // Validation
+    if (!formData.name.trim()) {
+      Alert.alert('Error', 'Meal name is required');
       return;
     }
-
-    if (isNaN(parseFloat(newMeal.price)) || parseFloat(newMeal.price) <= 0) {
-      Alert.alert('Invalid Price', 'Please enter a valid price greater than 0');
+    if (!formData.price || parseFloat(formData.price) <= 0) {
+      Alert.alert('Error', 'Valid price is required');
+      return;
+    }
+    if (!formData.cook_id) {
+      Alert.alert('Error', 'Cook selection is required');
       return;
     }
 
     try {
-      setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('meals')
-        .insert([{
-          name: newMeal.name,
-          description: newMeal.description || '',
-          price: parseFloat(newMeal.price),
-          is_weekly_special: newMeal.is_weekly_special,
-        }])
-        .select()
-        .single();
+      if (isEditing) {
+        // Update existing meal
+        const { error } = await supabase
+          .from('meals')
+          .update({
+            name: formData.name,
+            description: formData.description,
+            price: parseFloat(formData.price),
+            cook_id: parseInt(formData.cook_id),
+            is_weekly_special: formData.is_weekly_special,
+            updated_at: new Date(),
+          })
+          .eq('meal_id', selectedMeal.meal_id);
 
-      if (error) throw error;
+        if (error) throw error;
+        Alert.alert('Success', 'Meal updated successfully');
+      } else {
+        // Create new meal
+        const { error } = await supabase
+          .from('meals')
+          .insert({
+            name: formData.name,
+            description: formData.description,
+            price: parseFloat(formData.price),
+            cook_id: parseInt(formData.cook_id),
+            is_weekly_special: formData.is_weekly_special,
+          });
 
-      setMeals([data, ...meals]);
-      setShowAddMealModal(false);
-      resetNewMealForm();
-      
-      Alert.alert('Success', 'Meal added successfully!');
+        if (error) throw error;
+        Alert.alert('Success', 'Meal created successfully');
+      }
+
+      setModalVisible(false);
+      loadMeals();
     } catch (error) {
-      console.error('Error adding meal:', error);
-      Alert.alert('Error', 'Failed to add meal: ' + error.message);
-    } finally {
-      setLoading(false);
+      console.error('Error saving meal:', error);
+      Alert.alert('Error', error.message || 'Failed to save meal');
     }
   };
 
-  const handleEditMeal = async () => {
-    if (!editingMeal.name || !editingMeal.price) {
-      Alert.alert('Validation Error', 'Please fill in meal name and price');
-      return;
-    }
-
-    if (isNaN(parseFloat(editingMeal.price)) || parseFloat(editingMeal.price) <= 0) {
-      Alert.alert('Invalid Price', 'Please enter a valid price greater than 0');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('meals')
-        .update({
-          name: editingMeal.name,
-          description: editingMeal.description || '',
-          price: parseFloat(editingMeal.price),
-          is_weekly_special: editingMeal.is_weekly_special,
-        })
-        .eq('meal_id', editingMeal.meal_id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setMeals(meals.map(meal => 
-        meal.meal_id === editingMeal.meal_id ? data : meal
-      ));
-      setEditingMeal(null);
-      
-      Alert.alert('Success', 'Meal updated successfully!');
-    } catch (error) {
-      console.error('Error updating meal:', error);
-      Alert.alert('Error', 'Failed to update meal: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteMeal = (mealId) => {
+  const deleteMeal = async (mealId) => {
     Alert.alert(
-      'Delete Meal',
+      'Confirm Delete',
       'Are you sure you want to delete this meal? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -153,12 +167,11 @@ const AdminMealsScreen = ({ navigation }) => {
                 .eq('meal_id', mealId);
 
               if (error) throw error;
-              
-              setMeals(meals.filter(meal => meal.meal_id !== mealId));
               Alert.alert('Success', 'Meal deleted successfully');
+              loadMeals();
             } catch (error) {
               console.error('Error deleting meal:', error);
-              Alert.alert('Error', 'Failed to delete meal: ' + error.message);
+              Alert.alert('Error', 'Failed to delete meal');
             }
           },
         },
@@ -166,298 +179,196 @@ const AdminMealsScreen = ({ navigation }) => {
     );
   };
 
-  const resetNewMealForm = () => {
-    setNewMeal({
-      name: '',
-      description: '',
-      price: '',
-      is_weekly_special: false,
-    });
+  const renderMealTable = () => {
+    if (meals.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No meals available</Text>
+          <Text style={styles.emptySubtext}>Create your first meal to get started</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.tableContainer}>
+        <View style={styles.tableHeader}>
+          <Text style={styles.tableTitle}>🍽️ Meals</Text>
+          <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
+            <Text style={styles.addButtonText}>+ Add Meal</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.tableHeaderRow}>
+          <Text style={[styles.tableHeaderCell, { flex: 2 }]}>Name</Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Cook</Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Price</Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Special</Text>
+          <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Actions</Text>
+        </View>
+
+        {meals.map((meal) => (
+          <View key={meal.meal_id} style={styles.tableRow}>
+            <View style={[styles.tableCell, { flex: 2 }]}>
+              <Text style={styles.mealName}>{meal.name}</Text>
+              {meal.description && (
+                <Text style={styles.mealDescription} numberOfLines={2}>
+                  {meal.description}
+                </Text>
+              )}
+            </View>
+            <View style={[styles.tableCell, { flex: 1 }]}>
+              <Text style={styles.cookName}>{meal.cooks?.name || 'Unknown'}</Text>
+            </View>
+            <View style={[styles.tableCell, { flex: 1 }]}>
+              <Text style={styles.price}>${meal.price}</Text>
+            </View>
+            <View style={[styles.tableCell, { flex: 1 }]}>
+              <Text style={[styles.specialBadge, meal.is_weekly_special && styles.specialActive]}>
+                {meal.is_weekly_special ? '⭐' : '—'}
+              </Text>
+            </View>
+            <View style={[styles.tableCell, { flex: 1 }]}>
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => openEditModal(meal)}
+                >
+                  <Text style={styles.editButtonText}>✏️</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => deleteMeal(meal.meal_id)}
+                >
+                  <Text style={styles.deleteButtonText}>🗑️</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
   };
 
-  const startEditMeal = (meal) => {
-    setEditingMeal({
-      meal_id: meal.meal_id,
-      name: meal.name,
-      description: meal.description || '',
-      price: meal.price.toString(),
-      is_weekly_special: meal.is_weekly_special,
-    });
-  };
-
-  const filteredMeals = meals.filter(meal =>
-    meal.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (meal.description && meal.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  if (loading && meals.length === 0) {
-    return <LoadingSpinner text="Loading meals..." />;
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading meals...</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View style={styles.headerInfo}>
-            <Text style={styles.title}>🍽️ Meal Management</Text>
-            <Text style={styles.subtitle}>Manage available meals and specials</Text>
-          </View>
-          <TouchableOpacity 
-            style={styles.homeButton}
-            onPress={() => navigation.navigate('AdminHome')}
-          >
-            <Text style={styles.homeButtonText}>🏠 Home</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Manage Meals</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content}>
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search meals by name or description..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-
-        {/* Add Meal Button */}
-        <View style={styles.addMealSection}>
-          <CustomButton
-            title="➕ Add New Meal"
-            onPress={() => setShowAddMealModal(true)}
-            style={styles.addMealButton}
-            size="large"
-          />
-        </View>
-
-        {/* Meals List */}
-        <View style={styles.mealsList}>
-          {filteredMeals.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateIcon}>🍽️</Text>
-              <Text style={styles.emptyStateText}>No meals found</Text>
-              <Text style={styles.emptyStateSubtext}>
-                {searchQuery 
-                  ? 'Try adjusting your search'
-                  : 'Start by adding your first meal'
-                }
-              </Text>
-            </View>
-          ) : (
-            filteredMeals.map(meal => (
-              <View key={meal.meal_id} style={styles.mealCard}>
-                <View style={styles.mealHeader}>
-                  <View style={styles.mealInfo}>
-                    <Text style={styles.mealName}>{meal.name}</Text>
-                    <Text style={styles.mealPrice}>${meal.price}</Text>
-                    {meal.is_weekly_special && (
-                      <View style={styles.specialBadge}>
-                        <Text style={styles.specialText}>Weekly Special</Text>
-                      </View>
-                    )}
-                  </View>
-                  
-                  <View style={styles.mealActions}>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => startEditMeal(meal)}
-                    >
-                      <Text style={styles.actionButtonText}>✏️ Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.deleteButton]}
-                      onPress={() => handleDeleteMeal(meal.meal_id)}
-                    >
-                      <Text style={styles.actionButtonText}>🗑️ Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {meal.description && (
-                  <Text style={styles.mealDescription}>{meal.description}</Text>
-                )}
-                
-                <Text style={styles.mealDate}>
-                  Created: {new Date(meal.created_at).toLocaleDateString()}
-                </Text>
-              </View>
-            ))
-          )}
-        </View>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {renderMealTable()}
       </ScrollView>
 
-      {/* Add Meal Modal */}
+      {/* Add/Edit Meal Modal */}
       <Modal
-        visible={showAddMealModal}
         animationType="slide"
-        presentationStyle="pageSheet"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
       >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add New Meal</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {isEditing ? 'Edit Meal' : 'Add New Meal'}
+            </Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Meal Name *"
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Description (Optional)"
+              value={formData.description}
+              onChangeText={(text) => setFormData({ ...formData, description: text })}
+              multiline
+              numberOfLines={3}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Price * (e.g., 12.99)"
+              value={formData.price}
+              onChangeText={(text) => setFormData({ ...formData, price: text })}
+              keyboardType="numeric"
+            />
+
+            <View style={styles.pickerContainer}>
+              <Text style={styles.pickerLabel}>Cook *:</Text>
+              <ScrollView style={styles.picker}>
+                {cooks.map((cook) => (
+                  <TouchableOpacity
+                    key={cook.cook_id}
+                    style={[
+                      styles.pickerOption,
+                      formData.cook_id === cook.cook_id && styles.pickerOptionSelected
+                    ]}
+                    onPress={() => setFormData({ ...formData, cook_id: cook.cook_id })}
+                  >
+                    <Text style={[
+                      styles.pickerOptionText,
+                      formData.cook_id === cook.cook_id && styles.pickerOptionTextSelected
+                    ]}>
+                      {cook.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
             <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowAddMealModal(false)}
+              style={[
+                styles.checkboxContainer,
+                formData.is_weekly_special && styles.checkboxSelected
+              ]}
+              onPress={() => setFormData({ 
+                ...formData, 
+                is_weekly_special: !formData.is_weekly_special 
+              })}
             >
-              <Text style={styles.closeButtonText}>✕</Text>
+              <Text style={styles.checkboxText}>
+                {formData.is_weekly_special ? '⭐' : '○'} Weekly Special
+              </Text>
             </TouchableOpacity>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSave}
+              >
+                <Text style={styles.saveButtonText}>
+                  {isEditing ? 'Update' : 'Create Meal'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.formSection}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Meal Name *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter meal name"
-                  value={newMeal.name}
-                  onChangeText={(text) => setNewMeal({...newMeal, name: text})}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Description</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Enter meal description (optional)"
-                  value={newMeal.description}
-                  onChangeText={(text) => setNewMeal({...newMeal, description: text})}
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Price *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  value={newMeal.price}
-                  onChangeText={(text) => setNewMeal({...newMeal, price: text})}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <View style={styles.checkboxContainer}>
-                <TouchableOpacity
-                  style={styles.checkbox}
-                  onPress={() => setNewMeal({...newMeal, is_weekly_special: !newMeal.is_weekly_special})}
-                >
-                  <Text style={styles.checkboxIcon}>
-                    {newMeal.is_weekly_special ? '☑️' : '⬜'}
-                  </Text>
-                </TouchableOpacity>
-                <Text style={styles.checkboxLabel}>Mark as Weekly Special</Text>
-              </View>
-            </View>
-
-            <View style={styles.modalActions}>
-              <CustomButton
-                title="Cancel"
-                onPress={() => setShowAddMealModal(false)}
-                style={styles.cancelButton}
-                size="large"
-              />
-              <CustomButton
-                title="Add Meal"
-                onPress={handleAddMeal}
-                loading={loading}
-                disabled={loading}
-                style={styles.addButton}
-                size="large"
-              />
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-      {/* Edit Meal Modal */}
-      <Modal
-        visible={!!editingMeal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Edit Meal</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setEditingMeal(null)}
-            >
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.formSection}>
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Meal Name *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter meal name"
-                  value={editingMeal?.name}
-                  onChangeText={(text) => setEditingMeal({...editingMeal, name: text})}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Description</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Enter meal description (optional)"
-                  value={editingMeal?.description}
-                  onChangeText={(text) => setEditingMeal({...editingMeal, description: text})}
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Price *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  value={editingMeal?.price}
-                  onChangeText={(text) => setEditingMeal({...editingMeal, price: text})}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <View style={styles.checkboxContainer}>
-                <TouchableOpacity
-                  style={styles.checkbox}
-                  onPress={() => setEditingMeal({...editingMeal, is_weekly_special: !editingMeal.is_weekly_special})}
-                >
-                  <Text style={styles.checkboxIcon}>
-                    {editingMeal?.is_weekly_special ? '☑️' : '⬜'}
-                  </Text>
-                </TouchableOpacity>
-                <Text style={styles.checkboxLabel}>Mark as Weekly Special</Text>
-              </View>
-            </View>
-
-            <View style={styles.modalActions}>
-              <CustomButton
-                title="Cancel"
-                onPress={() => setEditingMeal(null)}
-                style={styles.cancelButton}
-                size="large"
-              />
-              <CustomButton
-                title="Update Meal"
-                onPress={handleEditMeal}
-                loading={loading}
-                disabled={loading}
-                style={styles.updateButton}
-                size="large"
-              />
-            </View>
-          </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -468,278 +379,275 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  loadingText: {
+    fontSize: 18,
+    color: '#666',
+  },
+  header: {
+    backgroundColor: '#6f42c1',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    padding: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  headerSpacer: {
+    width: 60,
+  },
   scrollView: {
     flex: 1,
   },
-  header: {
-    padding: 24,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 22,
-  },
-  homeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#e9ecef',
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-  },
-  homeButtonText: {
-    fontSize: 14,
-    color: '#6f42c1',
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
+  scrollContent: {
     padding: 16,
   },
-  backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#6f42c1',
-    fontWeight: '600',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  tableContainer: {
     backgroundColor: '#fff',
-    margin: 16,
-    paddingHorizontal: 16,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
-  searchIcon: {
-    fontSize: 18,
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    paddingVertical: 16,
-    color: '#333',
-  },
-  addMealSection: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  addMealButton: {
-    backgroundColor: '#28a745',
-  },
-  mealsList: {
-    padding: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyStateIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyStateText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  emptyStateSubtext: {
-    fontSize: 16,
-    color: '#999',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  mealCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  mealHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  mealInfo: {
-    flex: 1,
-  },
-  mealName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  mealPrice: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#28a745',
-    marginBottom: 8,
-  },
-  specialBadge: {
-    backgroundColor: '#ff6b35',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  specialText: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  mealActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
-  deleteButton: {
-    backgroundColor: '#fff5f5',
-    borderColor: '#fed7d7',
-  },
-  actionButtonText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
-  },
-  mealDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  mealDate: {
-    fontSize: 12,
-    color: '#999',
-  },
-  
-  // Modal Styles
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  modalHeader: {
+  tableHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#fff',
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
   },
-  modalTitle: {
-    fontSize: 24,
+  tableTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
   },
-  closeButton: {
-    padding: 8,
+  addButton: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
-  closeButtonText: {
-    fontSize: 24,
+  addButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  tableHeaderCell: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#495057',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  tableCell: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mealName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+  mealDescription: {
+    fontSize: 12,
     color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  cookName: {
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'center',
+  },
+  price: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#28a745',
+    textAlign: 'center',
+  },
+  specialBadge: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  specialActive: {
+    color: '#ffc107',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editButton: {
+    padding: 8,
+    backgroundColor: '#007bff',
+    borderRadius: 4,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  deleteButton: {
+    padding: 8,
+    backgroundColor: '#dc3545',
+    borderRadius: 4,
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
-    flex: 1,
-    padding: 24,
-  },
-  formSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
   },
-  inputContainer: {
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
     marginBottom: 20,
+    textAlign: 'center',
   },
-  inputLabel: {
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
     fontSize: 16,
-    fontWeight: '500',
+  },
+  pickerContainer: {
+    marginBottom: 16,
+  },
+  pickerLabel: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#333',
     marginBottom: 8,
   },
-  input: {
-    backgroundColor: '#f8f9fa',
+  picker: {
+    maxHeight: 120,
+  },
+  pickerOption: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  pickerOptionSelected: {
+    backgroundColor: '#6f42c1',
+    borderColor: '#6f42c1',
+  },
+  pickerOptionText: {
     fontSize: 16,
     color: '#333',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+    textAlign: 'center',
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
+  pickerOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
   checkboxContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
     marginBottom: 20,
   },
-  checkbox: {
-    marginRight: 12,
+  checkboxSelected: {
+    backgroundColor: '#f8f9ff',
+    borderColor: '#6f42c1',
   },
-  checkboxIcon: {
-    fontSize: 20,
-  },
-  checkboxLabel: {
+  checkboxText: {
     fontSize: 16,
     color: '#333',
+    marginLeft: 8,
   },
-  modalActions: {
+  modalButtons: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: 16,
-    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
   },
   cancelButton: {
-    flex: 1,
     backgroundColor: '#6c757d',
   },
-  addButton: {
-    flex: 2,
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  saveButton: {
     backgroundColor: '#28a745',
   },
-  updateButton: {
-    flex: 2,
-    backgroundColor: '#007AFF',
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

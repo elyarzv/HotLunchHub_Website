@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 
-const AuthContext = createContext();
+const AuthContext = createContext({
+  user: null,
+  loading: true,
+  signOut: async () => {},
+  loadUserProfile: async () => {},
+});
+
+export { AuthContext };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -12,6 +19,7 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
+  console.log('🔧 AuthProvider initializing...');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -72,22 +80,16 @@ export const AuthProvider = ({ children }) => {
 
       if (profileError) {
         console.error('Profile error:', profileError);
-        // Create fallback user if profile fails
-        const fallbackUser = {
-          id: authUser.id,
-          email: authUser.email,
-          role: 'admin', // Default to admin
-          name: authUser.email?.split('@')[0] || 'Admin',
-          status: 'active',
-          roleDetails: null,
-        };
-        console.log('Using fallback user:', fallbackUser);
-        setUser(fallbackUser);
+        // Don't create fallback user - let the login screen handle the error
+        console.log('Profile not found, keeping user as null');
+        setUser(null);
         return;
       }
 
       // Get role-specific details with timeout
       let roleDetails = null;
+      
+      console.log('🔍 Loading role details for role:', profile.role);
       
       if (profile.role === 'admin') {
         try {
@@ -98,7 +100,7 @@ export const AuthProvider = ({ children }) => {
             .single();
 
           const adminTimeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Admin details timeout')), 3000)
+            setTimeout(() => reject(new Error('Admin details timeout')), 10000)
           );
 
           const { data: adminData } = await Promise.race([
@@ -111,13 +113,88 @@ export const AuthProvider = ({ children }) => {
           console.log('Admin details not found, using basic info');
           roleDetails = null;
         }
+      } else if (profile.role === 'cook') {
+        try {
+          console.log('🔍 Loading cook details for auth_id:', authUser.id);
+          
+          const cookPromise = supabase
+            .from('cooks')
+            .select('*')
+            .eq('auth_id', authUser.id)
+            .single();
+
+          const cookTimeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Cook details timeout')), 10000)
+          );
+
+          const { data: cookData, error: cookError } = await Promise.race([
+            cookPromise,
+            cookTimeoutPromise
+          ]);
+          
+          if (cookError) {
+            console.error('❌ Cook details error:', cookError);
+            throw cookError;
+          }
+          
+          console.log('✅ Cook details loaded successfully:', cookData);
+          roleDetails = cookData;
+        } catch (cookError) {
+          console.error('❌ Cook details failed:', cookError);
+          console.log('Cook details not found, using basic info');
+          roleDetails = null;
+        }
+      } else if (profile.role === 'driver') {
+        try {
+          const driverPromise = supabase
+            .from('drivers')
+            .select('*')
+            .eq('auth_id', authUser.id)
+            .single();
+
+          const driverTimeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Driver details timeout')), 10000)
+          );
+
+          const { data: driverData } = await Promise.race([
+            driverPromise,
+            driverTimeoutPromise
+          ]);
+          
+          roleDetails = driverData;
+        } catch (driverError) {
+          console.log('Driver details not found, using basic info');
+          roleDetails = null;
+        }
+      } else if (profile.role === 'employee') {
+        try {
+          const employeePromise = supabase
+            .from('employees')
+            .select('*')
+            .eq('auth_id', authUser.id)
+            .single();
+
+          const employeeTimeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Employee details timeout')), 10000)
+          );
+
+          const { data: employeeData } = await Promise.race([
+            employeePromise,
+            employeeTimeoutPromise
+          ]);
+          
+          roleDetails = employeeData;
+        } catch (employeeError) {
+          console.log('Employee details not found, using basic info');
+          roleDetails = null;
+        }
       }
 
       const userProfile = {
         id: authUser.id,
         email: authUser.email,
         role: profile.role,
-        name: profile.full_name || authUser.email?.split('@')[0] || 'Admin',
+        name: roleDetails?.name || profile.full_name || authUser.email?.split('@')[0] || 'User',
         status: profile.status || 'active',
         roleDetails,
       };
@@ -128,18 +205,9 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Error loading user profile:', error);
       
-      // Create a basic user object to prevent infinite loading
-      const basicUser = {
-        id: authUser.id,
-        email: authUser.email,
-        role: 'admin', // Default to admin
-        name: authUser.email?.split('@')[0] || 'Admin',
-        status: 'active',
-        roleDetails: null,
-      };
-      
-      console.log('Creating basic user due to error:', basicUser);
-      setUser(basicUser);
+      // Don't create fallback user - let the login screen handle the error
+      console.log('Error loading profile, keeping user as null');
+      setUser(null);
     }
   };
 
@@ -156,7 +224,10 @@ export const AuthProvider = ({ children }) => {
     user,
     loading,
     signOut,
+    loadUserProfile,
   };
+
+  console.log('🔧 AuthContext value updated:', { user: !!user, loading, hasSignOut: !!signOut, hasLoadProfile: !!loadUserProfile });
 
   return (
     <AuthContext.Provider value={value}>
