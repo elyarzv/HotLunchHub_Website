@@ -2,7 +2,7 @@
 // Main navigation structure for the HotLunchHub app
 // Handles authentication flow and role-based navigation
 
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -16,6 +16,10 @@ import DriverLoginScreen from '../screens/auth/DriverLoginScreen';
 import AdminDashboard from '../screens/admin/AdminDashboard';
 import ManageUsers from '../screens/admin/ManageUsers';
 import AdminMealsScreen from '../screens/admin/AdminMealsScreen';
+import AdminEmployeesScreen from '../screens/admin/AdminEmployeesScreen';
+import AdminCooksScreen from '../screens/admin/AdminCooksScreen';
+import AdminDriversScreen from '../screens/admin/AdminDriversScreen';
+import AdminCompaniesScreen from '../screens/admin/AdminCompaniesScreen';
 import CookHomeScreen from '../screens/cook/CookHomeScreen';
 import DriverHomeScreen from '../screens/driver/DriverHomeScreen';
 import EmployeeHomeScreen from '../screens/employee/EmployeeHomeScreen';
@@ -141,6 +145,28 @@ const AppNavigator = () => {
   }
   
   const { user, loading } = context;
+  const navigationRef = useRef(null);
+
+  // Handle navigation when user state changes
+  useEffect(() => {
+    if (!loading && navigationRef.current) {
+      const currentScreen = getCurrentScreen();
+      console.log('🔄 User state changed, navigating to:', currentScreen);
+      
+      // Navigate to the appropriate screen based on user state
+      if (currentScreen === 'AdminLogin') {
+        navigationRef.current.reset({
+          index: 0,
+          routes: [{ name: 'AdminLogin' }],
+        });
+      } else {
+        navigationRef.current.reset({
+          index: 0,
+          routes: [{ name: currentScreen }],
+        });
+      }
+    }
+  }, [user, loading]);
 
   // Show loading screen while checking authentication
   if (loading) {
@@ -172,6 +198,7 @@ const AppNavigator = () => {
 
   return (
     <NavigationContainer 
+      ref={navigationRef}
       linking={linking}
       onStateChange={(state) => {
         console.log('🔗 Navigation state changed:', state?.routes?.[state.index]?.name);
@@ -195,6 +222,10 @@ const AppNavigator = () => {
         <Stack.Screen name="AdminDashboard" component={AdminDashboard} />
         <Stack.Screen name="ManageUsers" component={ManageUsers} />
         <Stack.Screen name="AdminMeals" component={AdminMealsScreen} />
+        <Stack.Screen name="AdminEmployees" component={AdminEmployeesScreen} />
+        <Stack.Screen name="AdminCooks" component={AdminCooksScreen} />
+        <Stack.Screen name="AdminDrivers" component={AdminDriversScreen} />
+        <Stack.Screen name="AdminCompanies" component={AdminCompaniesScreen} />
         <Stack.Screen name="DriverHome" component={DriverHomeScreen} />
         <Stack.Screen name="CookHome" component={CookHomeScreen} />
         <Stack.Screen name="EmployeeHome" component={EmployeeHomeScreen} />

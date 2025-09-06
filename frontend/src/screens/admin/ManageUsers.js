@@ -10,6 +10,7 @@ import {
   TextInput,
   Modal,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { supabase } from '../../services/supabase';
 
@@ -695,23 +696,32 @@ const ManageUsers = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
+      {/* Wrapper with flex:1 ensures ScrollView knows its height */}
+      <View style={styles.scrollWrapper}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={loadUsers} />}
+          showsVerticalScrollIndicator
         >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>👥 Manage Users</Text>
-        <View style={{ width: 60 }} />
-      </View>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backButtonText}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>👥 Manage Users</Text>
+            <View style={{ width: 60 }} />
+          </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {renderUserTable(users.admins, 'admin', 'Admins')}
-        {renderUserTable(users.drivers, 'driver', 'Drivers')}
-        {renderUserTable(users.cooks, 'cook', 'Cooks')}
-        {renderUserTable(users.employees, 'employee', 'Employees')}
-      </ScrollView>
+          {/* Users Content */}
+          {renderUserTable(users.admins, 'admin', 'Admins')}
+          {renderUserTable(users.drivers, 'driver', 'Drivers')}
+          {renderUserTable(users.cooks, 'cook', 'Cooks')}
+          {renderUserTable(users.employees, 'employee', 'Employees')}
+        </ScrollView>
+      </View>
 
       {/* Add/Edit User Modal */}
       <Modal
@@ -877,6 +887,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+    height: Platform.OS === 'web' ? '100vh' : '100%',
+  },
+  scrollWrapper: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 20,
   },
   loadingContainer: {
     flex: 1,

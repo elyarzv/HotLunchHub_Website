@@ -9,6 +9,8 @@ import {
   SafeAreaView,
   RefreshControl,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { supabase } from '../../services/supabase';
 
@@ -25,6 +27,8 @@ const AdminDashboard = ({ navigation }) => {
   const [adminInfo, setAdminInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedStatData, setSelectedStatData] = useState(null);
+  const [showStatModal, setShowStatModal] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -99,6 +103,69 @@ const AdminDashboard = ({ navigation }) => {
     setRefreshing(false);
   };
 
+  const handleStatPress = async (statType) => {
+    try {
+      setLoading(true);
+      let data = [];
+      let title = '';
+
+      switch (statType) {
+        case 'totalOrders':
+          const { data: ordersData } = await supabase
+            .from('orders')
+            .select(`
+              order_id,
+              order_date,
+              status,
+              quantity,
+              employees!inner(name, employee_code),
+              meals!inner(name),
+              companies!inner(name)
+            `)
+            .order('created_at', { ascending: false });
+          data = ordersData || [];
+          title = 'All Orders';
+          break;
+
+        case 'totalMeals':
+          // Navigate to AdminMeals page instead of showing modal
+          navigation.navigate('AdminMeals');
+          return;
+
+        case 'totalCompanies':
+          // Navigate to AdminCompanies page instead of showing modal
+          navigation.navigate('AdminCompanies');
+          return;
+
+        case 'totalEmployees':
+          // Navigate to AdminEmployees page instead of showing modal
+          navigation.navigate('AdminEmployees');
+          return;
+
+        case 'totalDrivers':
+          // Navigate to AdminDrivers page instead of showing modal
+          navigation.navigate('AdminDrivers');
+          return;
+
+        case 'totalCooks':
+          // Navigate to AdminCooks page instead of showing modal
+          navigation.navigate('AdminCooks');
+          return;
+
+        default:
+          return;
+      }
+
+      setSelectedStatData({ data, title, type: statType });
+      setShowStatModal(true);
+    } catch (error) {
+      console.error('Error fetching stat data:', error);
+      Alert.alert('Error', 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -145,10 +212,15 @@ const AdminDashboard = ({ navigation }) => {
             <Text style={styles.sectionTitle}>📊 System Statistics</Text>
             <View style={styles.statsGrid}>
               {Object.entries(stats).map(([key, value]) => (
-                <View key={key} style={styles.statCard}>
+                <TouchableOpacity 
+                  key={key} 
+                  style={styles.statCard}
+                  onPress={() => handleStatPress(key)}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.statNumber}>{value}</Text>
                   <Text style={styles.statLabel}>{formatStatLabel(key)}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
@@ -218,8 +290,226 @@ const AdminDashboard = ({ navigation }) => {
           <View style={styles.bottomSpacing} />
         </ScrollView>
       </View>
+
+      {/* Statistics Detail Modal */}
+      <Modal
+        visible={showStatModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowStatModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{selectedStatData?.title}</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowStatModal(false)}
+            >
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.modalContent}>
+            {selectedStatData?.data && selectedStatData.data.length > 0 ? (
+              <FlatList
+                data={selectedStatData.data}
+                keyExtractor={(item, index) => {
+                  const idField = Object.keys(item).find(key => key.includes('_id'));
+                  return idField ? item[idField].toString() : index.toString();
+                }}
+                renderItem={({ item }) => renderStatItem(item, selectedStatData.type)}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.flatListContent}
+              />
+            ) : (
+              <View style={styles.emptyModalState}>
+                <Text style={styles.emptyModalText}>No data available</Text>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
+};
+
+// Helper function to render different types of data items
+const renderStatItem = (item, type) => {
+  switch (type) {
+    case 'totalOrders':
+      return (
+        <View style={styles.modalItemCard}>
+          <View style={styles.modalItemHeader}>
+            <Text style={styles.modalItemTitle}>Order #{item.order_id}</Text>
+            <Text style={[styles.modalItemStatus, { color: getStatusColor(item.status) }]}>
+              {item.status}
+            </Text>
+          </View>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Employee: </Text>
+            {item.employees?.name} ({item.employees?.employee_code})
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Meal: </Text>
+            {item.meals?.name}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Company: </Text>
+            {item.companies?.name}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Quantity: </Text>
+            {item.quantity}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Date: </Text>
+            {new Date(item.order_date).toLocaleDateString()}
+          </Text>
+        </View>
+      );
+
+    case 'totalMeals':
+      return (
+        <View style={styles.modalItemCard}>
+          <View style={styles.modalItemHeader}>
+            <Text style={styles.modalItemTitle}>{item.name}</Text>
+            {item.is_weekly_special && (
+              <View style={styles.specialBadge}>
+                <Text style={styles.specialText}>Special</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Price: </Text>
+            ${item.price}
+          </Text>
+          {item.description && (
+            <Text style={styles.modalItemText}>
+              <Text style={styles.modalItemLabel}>Description: </Text>
+              {item.description}
+            </Text>
+          )}
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Created: </Text>
+            {new Date(item.created_at).toLocaleDateString()}
+          </Text>
+        </View>
+      );
+
+    case 'totalCompanies':
+      return (
+        <View style={styles.modalItemCard}>
+          <View style={styles.modalItemHeader}>
+            <Text style={styles.modalItemTitle}>{item.name}</Text>
+          </View>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Contact: </Text>
+            {item.contact_person}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Phone: </Text>
+            {item.phone}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Email: </Text>
+            {item.email}
+          </Text>
+          {item.address && (
+            <Text style={styles.modalItemText}>
+              <Text style={styles.modalItemLabel}>Address: </Text>
+              {item.address}
+            </Text>
+          )}
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Created: </Text>
+            {new Date(item.created_at).toLocaleDateString()}
+          </Text>
+        </View>
+      );
+
+    case 'totalEmployees':
+      return (
+        <View style={styles.modalItemCard}>
+          <View style={styles.modalItemHeader}>
+            <Text style={styles.modalItemTitle}>{item.name}</Text>
+            <Text style={styles.modalItemStatus}>{item.employee_code}</Text>
+          </View>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Email: </Text>
+            {item.email}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Phone: </Text>
+            {item.phone}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Company: </Text>
+            {item.companies?.name}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Created: </Text>
+            {new Date(item.created_at).toLocaleDateString()}
+          </Text>
+        </View>
+      );
+
+    case 'totalDrivers':
+      return (
+        <View style={styles.modalItemCard}>
+          <View style={styles.modalItemHeader}>
+            <Text style={styles.modalItemTitle}>{item.name}</Text>
+            <Text style={styles.modalItemStatus}>ID: {item.driver_id}</Text>
+          </View>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Email: </Text>
+            {item.email}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Phone: </Text>
+            {item.phone}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Created: </Text>
+            {new Date(item.created_at).toLocaleDateString()}
+          </Text>
+        </View>
+      );
+
+    case 'totalCooks':
+      return (
+        <View style={styles.modalItemCard}>
+          <View style={styles.modalItemHeader}>
+            <Text style={styles.modalItemTitle}>{item.name}</Text>
+            <Text style={styles.modalItemStatus}>ID: {item.cook_id}</Text>
+          </View>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Email: </Text>
+            {item.email}
+          </Text>
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Phone: </Text>
+            {item.phone}
+          </Text>
+          {item.address_line1 && (
+            <Text style={styles.modalItemText}>
+              <Text style={styles.modalItemLabel}>Address: </Text>
+              {item.address_line1}, {item.city}
+            </Text>
+          )}
+          <Text style={styles.modalItemText}>
+            <Text style={styles.modalItemLabel}>Created: </Text>
+            {new Date(item.created_at).toLocaleDateString()}
+          </Text>
+        </View>
+      );
+
+    default:
+      return (
+        <View style={styles.modalItemCard}>
+          <Text style={styles.modalItemText}>Unknown item type</Text>
+        </View>
+      );
+  }
 };
 
 // Helper to make stat labels readable
@@ -348,6 +638,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '48%',
     marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+      },
+    }),
   },
   statNumber: {
     fontSize: 24,
@@ -474,6 +780,116 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 20,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#6f42c1',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    flex: 1,
+  },
+  closeButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 8,
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  flatListContent: {
+    paddingBottom: 20,
+  },
+  modalItemCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+      },
+    }),
+  },
+  modalItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalItemTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1,
+  },
+  modalItemStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  modalItemText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  modalItemLabel: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  specialBadge: {
+    backgroundColor: '#ff6b35',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  specialText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyModalState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyModalText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
   },
 });
 

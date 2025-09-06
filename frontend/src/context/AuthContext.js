@@ -151,7 +151,9 @@ export const AuthProvider = ({ children }) => {
         // Try to detect role from email or context
         let detectedRole = 'unknown';
         if (authUser.email) {
-          if (authUser.email.includes('admin') || authUser.email.includes('Admin')) {
+          // Check for specific admin emails
+          if (authUser.email.includes('admin') || authUser.email.includes('Admin') || 
+              authUser.email === 'elyar.zavary@gmail.com') {
             detectedRole = 'admin';
           } else if (authUser.email.includes('cook') || authUser.email.includes('Cook')) {
             detectedRole = 'cook';
