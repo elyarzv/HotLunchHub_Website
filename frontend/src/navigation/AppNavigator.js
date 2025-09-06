@@ -153,18 +153,16 @@ const AppNavigator = () => {
       const currentScreen = getCurrentScreen();
       console.log('🔄 User state changed, navigating to:', currentScreen);
       
-      // Navigate to the appropriate screen based on user state
-      if (currentScreen === 'AdminLogin') {
-        navigationRef.current.reset({
-          index: 0,
-          routes: [{ name: 'AdminLogin' }],
-        });
-      } else {
+      // Only redirect if user is authenticated (not null/undefined)
+      // This allows direct access to login pages when user is not authenticated
+      if (user) {
         navigationRef.current.reset({
           index: 0,
           routes: [{ name: currentScreen }],
         });
       }
+      // If user is null/undefined, let the initialRouteName handle the routing
+      // This allows direct access to specific login pages via URL
     }
   }, [user, loading]);
 
@@ -176,7 +174,7 @@ const AppNavigator = () => {
   // Determine which screen to show based on user state
   const getCurrentScreen = () => {
     if (!user) {
-      return 'AdminLogin';
+      return 'AdminLogin'; // Default for unauthenticated users
     }
     
     switch (user.role) {
@@ -193,8 +191,9 @@ const AppNavigator = () => {
     }
   };
 
-  const currentScreen = getCurrentScreen();
-  console.log('🎯 Current screen should be:', currentScreen, 'for user role:', user?.role);
+  // For initial route, use AdminLogin as default but let URL routing handle specific login pages
+  const initialRoute = 'AdminLogin';
+  console.log('🎯 Initial route:', initialRoute, 'for user role:', user?.role);
 
   return (
     <NavigationContainer 
@@ -210,7 +209,7 @@ const AppNavigator = () => {
       <Stack.Navigator 
         key={user ? `user-${user.role}-${user.id}` : 'no-user'}
         screenOptions={{ headerShown: false }}
-        initialRouteName={currentScreen}
+        initialRouteName={initialRoute}
       >
         {/* Always define all screens, but control access through navigation logic */}
         <Stack.Screen name="AdminLogin" component={AdminLoginScreen} />
