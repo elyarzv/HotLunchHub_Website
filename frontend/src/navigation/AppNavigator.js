@@ -17,9 +17,27 @@ import AdminDashboard from '../screens/admin/AdminDashboard';
 import ManageUsers from '../screens/admin/ManageUsers';
 import AdminMealsScreen from '../screens/admin/AdminMealsScreen';
 import CookHomeScreen from '../screens/cook/CookHomeScreen';
+import DriverHomeScreen from '../screens/driver/DriverHomeScreen';
+import EmployeeHomeScreen from '../screens/employee/EmployeeHomeScreen';
 
 // Create stack navigator
 const Stack = createStackNavigator();
+
+// Helper function to get initial route based on user role
+const getInitialRouteName = (role) => {
+  switch (role) {
+    case 'admin':
+      return 'AdminDashboard';
+    case 'cook':
+      return 'CookHome';
+    case 'driver':
+      return 'DriverHome';
+    case 'employee':
+      return 'EmployeeHome';
+    default:
+      return 'AdminLogin';
+  }
+};
 
 // Loading Screen Component
 const LoadingScreen = () => (
@@ -129,6 +147,29 @@ const AppNavigator = () => {
     return <LoadingScreen />;
   }
 
+  // Determine which screen to show based on user state
+  const getCurrentScreen = () => {
+    if (!user) {
+      return 'AdminLogin';
+    }
+    
+    switch (user.role) {
+      case 'admin':
+        return 'AdminDashboard';
+      case 'cook':
+        return 'CookHome';
+      case 'driver':
+        return 'DriverHome';
+      case 'employee':
+        return 'EmployeeHome';
+      default:
+        return 'AdminLogin';
+    }
+  };
+
+  const currentScreen = getCurrentScreen();
+  console.log('🎯 Current screen should be:', currentScreen, 'for user role:', user?.role);
+
   return (
     <NavigationContainer 
       linking={linking}
@@ -140,44 +181,23 @@ const AppNavigator = () => {
       }}
     >
       <Stack.Navigator 
+        key={user ? `user-${user.role}-${user.id}` : 'no-user'}
         screenOptions={{ headerShown: false }}
-        initialRouteName="AdminLogin" // Set admin login as default
+        initialRouteName={currentScreen}
       >
-        {!user ? (
-          // Authentication screens - direct access to role-specific logins
-          <>
-            <Stack.Screen name="AdminLogin" component={AdminLoginScreen} />
-            <Stack.Screen name="EmployeeLogin" component={EmployeeLoginScreen} />
-            <Stack.Screen name="CookLogin" component={CookLoginScreen} />
-            <Stack.Screen name="DriverLogin" component={DriverLoginScreen} />
-          </>
-        ) : (
-          // Role-based navigation after login
-          <>
-            {user.role === 'admin' && (
-              <>
-                <Stack.Screen name="AdminDashboard" component={AdminDashboard} />
-                <Stack.Screen name="ManageUsers" component={ManageUsers} />
-                <Stack.Screen name="AdminMeals" component={AdminMealsScreen} />
-              </>
-            )}
-            {user.role === 'driver' && (
-              <>
-                <Stack.Screen name="DriverHome" component={() => <View><Text>Driver Home</Text></View>} />
-              </>
-            )}
-            {user.role === 'cook' && (
-              <>
-                <Stack.Screen name="CookHome" component={CookHomeScreen} />
-              </>
-            )}
-            {user.role === 'employee' && (
-              <>
-                <Stack.Screen name="EmployeeHome" component={() => <View><Text>Employee Home</Text></View>} />
-              </>
-            )}
-          </>
-        )}
+        {/* Always define all screens, but control access through navigation logic */}
+        <Stack.Screen name="AdminLogin" component={AdminLoginScreen} />
+        <Stack.Screen name="EmployeeLogin" component={EmployeeLoginScreen} />
+        <Stack.Screen name="CookLogin" component={CookLoginScreen} />
+        <Stack.Screen name="DriverLogin" component={DriverLoginScreen} />
+        
+        {/* Role-based screens */}
+        <Stack.Screen name="AdminDashboard" component={AdminDashboard} />
+        <Stack.Screen name="ManageUsers" component={ManageUsers} />
+        <Stack.Screen name="AdminMeals" component={AdminMealsScreen} />
+        <Stack.Screen name="DriverHome" component={DriverHomeScreen} />
+        <Stack.Screen name="CookHome" component={CookHomeScreen} />
+        <Stack.Screen name="EmployeeHome" component={EmployeeHomeScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -90,15 +90,8 @@ const AdminLoginScreen = ({ navigation }) => {
       console.log('✅ Admin details found:', adminDetails);
 
       console.log('🎉 Admin login successful!');
-      Alert.alert('Success', `Welcome, Admin ${adminDetails.name}!`, [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Navigate to admin dashboard
-            navigation.navigate('AdminDashboard');
-          }
-        }
-      ]);
+      // The AuthContext will automatically handle navigation based on user role
+      // No need to manually navigate here
 
     } catch (error) {
       console.error('❌ Login error:', error);

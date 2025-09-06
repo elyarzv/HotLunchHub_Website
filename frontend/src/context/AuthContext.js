@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }) => {
   console.log('🔧 AuthProvider initializing...');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
   useEffect(() => {
     // Check for existing session
@@ -107,7 +108,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const loadUserProfile = async (authUser, retryCount = 0) => {
+    // Prevent multiple simultaneous profile loads
+    if (isLoadingProfile) {
+      console.log('⏳ Profile already loading, skipping duplicate request');
+      return;
+    }
+
     try {
+      setIsLoadingProfile(true);
       console.log(`Loading profile for user: ${authUser.id} (attempt ${retryCount + 1})`);
       
       // Safety check: ensure we don't lose the user during loading
@@ -116,18 +124,29 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       
-      // Add timeout to prevent hanging - increased from 5s to 15s
+      // Optimized profile query with shorter timeout
       const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
-      console.log('⏱️ Starting profile query with 15s timeout...');
+      console.log('⏱️ Starting profile query with 5s timeout...');
       
-      // Create a proactive fallback user after 10 seconds to prevent null states
-      const proactiveFallbackTimer = setTimeout(() => {
-        console.log('⚠️ Profile taking longer than 10s, creating proactive fallback user...');
+      // Create a proactive fallback user after 3 seconds to prevent null states
+      let proactiveFallbackTimer;
+      let timeoutId;
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          console.log('⏰ Profile query timeout after 5 seconds');
+          reject(new Error('Profile loading timeout'));
+        }, 5000);
+      });
+
+      // Set up proactive fallback timer
+      proactiveFallbackTimer = setTimeout(() => {
+        console.log('⚠️ Profile taking longer than 3s, creating proactive fallback user...');
         
         // Try to detect role from email or context
         let detectedRole = 'unknown';
@@ -154,23 +173,16 @@ export const AuthProvider = ({ children }) => {
         
         console.log('Created proactive fallback user with detected role:', proactiveFallbackUser);
         setUser(proactiveFallbackUser);
-      }, 10000);
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => {
-          console.log('⏰ Profile query timeout after 15 seconds');
-          clearTimeout(proactiveFallbackTimer); // Clear the proactive timer
-          reject(new Error('Profile loading timeout'));
-        }, 15000)
-      );
+      }, 3000);
 
       const { data: profile, error: profileError } = await Promise.race([
         profilePromise,
         timeoutPromise
       ]);
 
-      // Clear the proactive timer since we got a result
-      clearTimeout(proactiveFallbackTimer);
+      // Clear both timers since we got a result
+      if (timeoutId) clearTimeout(timeoutId);
+      if (proactiveFallbackTimer) clearTimeout(proactiveFallbackTimer);
       console.log('✅ Profile query completed successfully');
 
       if (profileError) {
@@ -372,6 +384,9 @@ export const AuthProvider = ({ children }) => {
         console.error('❌ Cannot create fallback user - invalid authUser');
         // Don't set user to null - keep existing user if any
       }
+    } finally {
+      setIsLoadingProfile(false);
+      setLoading(false);
     }
   };
 
